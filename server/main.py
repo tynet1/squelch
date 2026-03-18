@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
+# TODO: add token auth middleware if ever exposed beyond a private Tailscale network
 app = FastAPI(title="Squelch", lifespan=lifespan)
 
 
@@ -222,7 +224,8 @@ async def rr_lookup(url: str):
       - WACN / System ID
       - control channel frequencies (MHz)
     """
-    if "radioreference.com" not in url:
+    host = urlparse(url).hostname or ""
+    if host != "radioreference.com" and not host.endswith(".radioreference.com"):
         raise HTTPException(400, "URL must be a radioreference.com link")
 
     async with httpx.AsyncClient(follow_redirects=True, headers=RR_HEADERS) as client:
@@ -312,32 +315,39 @@ class TrunkConfig(BaseModel):
     sysid: Optional[str] = "0"
 
 
+def _sanitize_tsv(value: str) -> str:
+    """Strip characters that would corrupt a TSV field."""
+    return value.replace("\t", " ").replace("\r", "").replace("\n", " ").strip()
+
+
 @app.post("/api/config")
 async def save_config(cfg: TrunkConfig):
     tsv_path = Path(__file__).parent.parent / "config" / "trunk.tsv"
     tsv_path.parent.mkdir(exist_ok=True)
 
     # Convert NAC/WACN/SYSID to decimal for OP25.
-    # Accepts "0x293" (hex with prefix), "293" (plain decimal), or "293" (bare hex — ambiguous,
-    # treated as decimal to match what users typically type).
+    # Accepts "0x293" (explicit hex) or "659" (plain decimal).
     def to_dec(val: str) -> str:
         val = val.strip()
         if not val:
             return "0"
         try:
             if val.lower().startswith("0x"):
-                return str(int(val, 16))   # explicit hex: 0x293 → 659
-            return str(int(val, 10))       # decimal: 659 → 659
+                return str(int(val, 16))
+            return str(int(val, 10))
         except ValueError:
             return "0"
 
-    nac_dec  = to_dec(cfg.nac)  if cfg.nac  else "0"
-    wacn_dec = to_dec(cfg.wacn) if cfg.wacn else "0"
+    nac_dec  = to_dec(cfg.nac)   if cfg.nac   else "0"
+    wacn_dec = to_dec(cfg.wacn)  if cfg.wacn  else "0"
     sys_dec  = to_dec(cfg.sysid) if cfg.sysid else "0"
-    freqs    = ",".join(cfg.control_channels)
+
+    # Sanitize all user-supplied strings before writing to TSV
+    safe_name = _sanitize_tsv(cfg.name)
+    safe_freqs = ",".join(_sanitize_tsv(f) for f in cfg.control_channels if f.strip())
 
     header = "Sys Name\tControl Channel List\tOffset\tNAC\tWACN\tSYSID\tSites File\tUnit Id File\tWhitelist\tBlacklist\tCenter Frequency"
-    row    = f"{cfg.name}\t{freqs}\t0\t{nac_dec}\t{wacn_dec}\t{sys_dec}"
+    row    = f"{safe_name}\t{safe_freqs}\t0\t{nac_dec}\t{wacn_dec}\t{sys_dec}"
 
     tsv_path.write_text(f"{header}\n{row}\n")
     return {"ok": True, "path": str(tsv_path)}
@@ -424,23 +434,24 @@ async def record_start():
         if _rec_proc is not None:
             raise HTTPException(400, "Already recording")
 
-    RECORDINGS_DIR.mkdir(exist_ok=True)
-    ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"op25_{ts}.mp3"
-    filepath = RECORDINGS_DIR / filename
+        RECORDINGS_DIR.mkdir(exist_ok=True)
+        ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"squelch_{ts}.mp3"
+        filepath = RECORDINGS_DIR / filename
 
-    _rec_proc = await asyncio.create_subprocess_exec(
-        "ffmpeg",
-        "-f", "s16le", "-ar", "8000", "-ac", "1",
-        "-i", f"{OP25_URL}/feed",
-        "-f", "mp3", "-ar", "22050", "-b:a", "32k",
-        "-loglevel", "quiet",
-        str(filepath),
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    _rec_file  = filename
-    _rec_start = time.time()
+        _rec_proc = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-f", "s16le", "-ar", "8000", "-ac", "1",
+            "-i", f"{OP25_URL}/feed",
+            "-f", "mp3", "-ar", "22050", "-b:a", "32k",
+            "-loglevel", "quiet",
+            str(filepath),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        _rec_file  = filename
+        _rec_start = time.time()
+
     return {"ok": True, "file": filename}
 
 
@@ -451,16 +462,18 @@ async def record_stop():
         if _rec_proc is None:
             raise HTTPException(400, "Not recording")
 
+        proc       = _rec_proc
+        saved      = _rec_file
+        _rec_proc  = None
+        _rec_file  = None
+        _rec_start = None
+
     try:
-        _rec_proc.terminate()
-        await asyncio.wait_for(_rec_proc.wait(), timeout=5)
+        proc.terminate()
+        await asyncio.wait_for(proc.wait(), timeout=5)
     except Exception:
         pass
 
-    saved      = _rec_file
-    _rec_proc  = None
-    _rec_file  = None
-    _rec_start = None
     return {"ok": True, "file": saved}
 
 
