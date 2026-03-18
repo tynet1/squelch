@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0f0f0f" />
+  <title>Squelch</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-left">
+      <span class="app-title">SQUELCH</span>
+      <span class="system-name" id="system-name">—</span>
+    </div>
+    <div class="header-right">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-label" id="status-label">CONNECTING</span>
+      <button class="gear-btn" id="gear-btn" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Config Sheet -->
+  <div class="sheet-backdrop" id="sheet-backdrop"></div>
+  <div class="config-sheet" id="config-sheet" aria-hidden="true">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">System Setup</span>
+      <button class="sheet-close" id="sheet-close">✕</button>
+    </div>
+
+    <div class="config-section">
+      <label class="config-label">RadioReference URL</label>
+      <div class="rr-input-row">
+        <input id="rr-url" class="config-input" type="url"
+          placeholder="https://www.radioreference.com/db/sid/XXXXX"
+          autocorrect="off" autocapitalize="off" spellcheck="false" />
+        <button class="rr-fetch-btn" id="rr-fetch-btn">Fetch</button>
+      </div>
+      <div class="rr-status" id="rr-status"></div>
+    </div>
+
+    <div class="config-section">
+      <label class="config-label">System Name</label>
+      <input id="cfg-name" class="config-input" type="text" placeholder="My P25 System" />
+    </div>
+
+    <div class="config-section">
+      <label class="config-label">Control Channels (MHz, one per line)</label>
+      <textarea id="cfg-freqs" class="config-textarea" rows="4"
+        placeholder="851.0125&#10;851.5125&#10;852.0125"
+        autocorrect="off" spellcheck="false"></textarea>
+    </div>
+
+    <div class="config-row-3">
+      <div class="config-section">
+        <label class="config-label">NAC (hex)</label>
+        <input id="cfg-nac" class="config-input" type="text" placeholder="0x293" autocorrect="off" />
+      </div>
+      <div class="config-section">
+        <label class="config-label">WACN (hex)</label>
+        <input id="cfg-wacn" class="config-input" type="text" placeholder="0xBEE00" autocorrect="off" />
+      </div>
+      <div class="config-section">
+        <label class="config-label">SYS ID (hex)</label>
+        <input id="cfg-sysid" class="config-input" type="text" placeholder="0x1A3" autocorrect="off" />
+      </div>
+    </div>
+
+    <button class="save-btn" id="cfg-save-btn">Save to trunk.tsv</button>
+    <div class="save-status" id="save-status"></div>
+
+    <!-- Muted groups -->
+    <div class="muted-section">
+      <div class="muted-header">
+        <span class="config-label" style="margin:0">MUTED GROUPS</span>
+        <button class="muted-clear-btn" id="muted-clear-btn">Clear All</button>
+      </div>
+      <ul class="muted-list" id="muted-list">
+        <li class="muted-empty">No muted groups</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── MONITOR page ─────────────────────────────────────────────────────── -->
+  <main id="page-monitor" class="page active">
+
+    <!-- Current Call -->
+    <section class="current-call">
+      <div class="tgid-row">
+        <span class="call-badge" id="call-badge">IDLE</span>
+        <span class="tgid" id="tgid">—</span>
+        <button class="mute-tg-btn" id="mute-tg-btn" aria-label="Mute talkgroup" title="Mute this talkgroup" style="display:none">
+          <!-- speaker / muted icons swapped by JS -->
+          <svg id="icon-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+          <svg id="icon-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>
+        </button>
+      </div>
+      <div class="tg-name" id="tg-name">No active call</div>
+      <div class="call-meta">
+        <span class="meta-item" id="freq-display">—</span>
+        <span class="meta-item" id="src-display">SRC —</span>
+        <span class="meta-item" id="nac-display">NAC —</span>
+      </div>
+      <div class="rssi-bar-container">
+        <div class="rssi-bar" id="rssi-bar"></div>
+      </div>
+      <div class="rssi-label" id="rssi-label">RSSI —</div>
+    </section>
+
+    <!-- Audio Player -->
+    <section class="audio-section">
+      <button class="play-btn" id="play-btn" aria-label="Play/Pause audio">
+        <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      </button>
+      <div class="audio-info">
+        <div class="audio-status" id="audio-status">Tap to start audio</div>
+        <div class="audio-bars" id="audio-bars">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </div>
+      <button class="record-btn" id="record-btn" aria-label="Record">
+        <span class="rec-dot"></span>
+      </button>
+      <audio id="audio-player" preload="none"></audio>
+    </section>
+
+    <!-- Controls -->
+    <section class="controls">
+      <button class="ctrl-btn btn-hold"    id="btn-hold">HOLD</button>
+      <button class="ctrl-btn btn-skip"    id="btn-skip">SKIP</button>
+      <button class="ctrl-btn btn-lockout" id="btn-lockout">LOCKOUT</button>
+      <button class="ctrl-btn btn-scan"    id="btn-scan">SCAN</button>
+    </section>
+
+    <!-- Recent Calls -->
+    <section class="recent-calls">
+      <div class="section-header">RECENT CALLS</div>
+      <ul class="call-list" id="call-list">
+        <li class="call-item-empty">No calls yet</li>
+      </ul>
+    </section>
+
+  </main>
+
+  <!-- ── STATUS page ──────────────────────────────────────────────────────── -->
+  <main id="page-status" class="page">
+
+    <div class="status-page">
+
+      <!-- Services -->
+      <div class="section-header">SERVICES</div>
+      <div class="status-cards" id="svc-cards">
+        <div class="svc-card" id="svc-op25">
+          <div class="svc-info">
+            <span class="svc-dot"></span>
+            <span class="svc-name">op25</span>
+            <span class="svc-state">—</span>
+          </div>
+          <button class="restart-btn" data-svc="op25">Restart</button>
+        </div>
+        <div class="svc-card" id="svc-op25-web">
+          <div class="svc-info">
+            <span class="svc-dot"></span>
+            <span class="svc-name">op25-web</span>
+            <span class="svc-state">—</span>
+          </div>
+          <button class="restart-btn" data-svc="op25-web">Restart</button>
+        </div>
+      </div>
+
+      <!-- Dependencies -->
+      <div class="section-header">DEPENDENCIES</div>
+      <div class="dep-list" id="dep-list">
+        <div class="dep-item" id="dep-op25api">
+          <span class="dep-icon">—</span>
+          <span class="dep-name">OP25 API</span>
+          <span class="dep-val"></span>
+        </div>
+        <div class="dep-item" id="dep-ffmpeg">
+          <span class="dep-icon">—</span>
+          <span class="dep-name">ffmpeg</span>
+          <span class="dep-val"></span>
+        </div>
+        <div class="dep-item" id="dep-rtlsdr">
+          <span class="dep-icon">—</span>
+          <span class="dep-name">RTL-SDR</span>
+          <span class="dep-val"></span>
+        </div>
+      </div>
+
+      <!-- Recordings -->
+      <div class="section-header">RECORDINGS</div>
+      <ul class="rec-list" id="rec-list">
+        <li class="call-item-empty">No recordings yet</li>
+      </ul>
+
+    </div>
+  </main>
+
+  <!-- ── GROUPS page ──────────────────────────────────────────────────────── -->
+  <main id="page-groups" class="page">
+    <div class="groups-page">
+      <div class="groups-search-wrap">
+        <input id="tg-search" class="groups-search" type="search"
+          placeholder="Search talkgroups…"
+          autocorrect="off" autocapitalize="off" spellcheck="false" />
+      </div>
+      <div class="groups-meta" id="groups-meta"></div>
+      <ul class="tg-list" id="tg-list">
+        <li class="call-item-empty">Loading talkgroups…</li>
+      </ul>
+    </div>
+  </main>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" data-page="monitor">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </svg>
+      <span>Monitor</span>
+    </button>
+    <button class="nav-tab" data-page="groups">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+      </svg>
+      <span>Groups</span>
+    </button>
+    <button class="nav-tab" data-page="status">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+      </svg>
+      <span>Status</span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>
